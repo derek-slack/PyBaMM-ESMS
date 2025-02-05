@@ -563,11 +563,7 @@ class ParticleLithiumIonParameters(BaseParameters):
         else:
             lithiation = lithiation + " "
         inputs = {
-            "Electrolyte concentration [mol.m-3]": c_e,
-            f"{Domain} particle surface concentration [mol.m-3]": c_s_surf,
-            f"{self.phase_prefactor}Maximum {domain} particle "
-            "surface concentration [mol.m-3]": self.c_max,
-            "Temperature [K]": T,
+            "Current [A]": pybamm.electrical_parameters.current_with_time,
         }
         return pybamm.FunctionParameter(
             f"{self.phase_prefactor}{Domain} electrode {lithiation}"

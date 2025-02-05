@@ -483,7 +483,7 @@ class ParameterValues:
                 )
             )
 
-        interpolant_events = self._get_interpolant_events(model)
+        interpolant_events = []
         for event in interpolant_events:
             pybamm.logger.verbose(f"Processing parameters for event '{event.name}''")
             new_events.append(

@@ -12,7 +12,7 @@ from functools import lru_cache
 from datetime import timedelta
 import pybamm.telemetry
 from pybamm.util import import_optional_dependency
-
+import jax.numpy as jnp
 from pybamm.expression_tree.operations.serialise import Serialise
 
 
@@ -507,8 +507,8 @@ class Simulation:
                 # We only raise a warning here as users may genuinely only want
                 # the solution returned at some specified points.
                 elif not isinstance(solver, pybamm.IDAKLUSolver) and not set(
-                    np.round(time_data, 12)
-                ).issubset(set(np.round(t_eval, 12))):
+                        np.round(time_data, 12).flatten()
+                ).issubset(set(np.round(t_eval, 12).flatten())):
                     warnings.warn(
                         """
                         t_eval does not contain all of the time points in the data

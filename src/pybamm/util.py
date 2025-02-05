@@ -269,9 +269,7 @@ def has_jax():
 
     """
     return (
-        (importlib.util.find_spec("jax") is not None)
-        and (importlib.util.find_spec("jaxlib") is not None)
-        and is_jax_compatible()
+        True
     )
 
 

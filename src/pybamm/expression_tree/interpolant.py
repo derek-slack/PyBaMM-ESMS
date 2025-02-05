@@ -3,7 +3,7 @@
 #
 from __future__ import annotations
 import numpy as np
-from scipy import interpolate
+from jax.scipy import interpolate
 from collections.abc import Sequence
 import numbers
 
@@ -76,7 +76,7 @@ class Interpolant(pybamm.Function):
             if y.ndim != 3:
                 raise ValueError("y should be three-dimensional if len(x)=3")
 
-            if x1.shape[0] != y.shape[0]:
+            if x1[0].shape[0] != y.shape[0]:
                 raise ValueError(
                     "len(x1) should equal y=shape[0], "
                     f"but x1.shape={x1.shape} and y.shape={y.shape}"
@@ -98,7 +98,7 @@ class Interpolant(pybamm.Function):
                 x1 = x
                 x: list[np.ndarray] = [x]  # type: ignore[no-redef]
             x2 = None
-            if x1.shape[0] != y.shape[0]:
+            if x1.shape[1] != y.shape[0]:
                 raise ValueError(
                     "len(x1) should equal y=shape[0], "
                     f"but x1.shape={x1.shape} and y.shape={y.shape}"
@@ -125,12 +125,9 @@ class Interpolant(pybamm.Function):
                     fill_value_1: float | str = np.nan
                 elif extrapolate is True:
                     fill_value_1 = "extrapolate"
-                interpolating_function = interpolate.interp1d(
+                interpolating_function = interpolate.RegularGridInterpolator(
                     x1,
-                    y,
-                    bounds_error=False,
-                    fill_value=fill_value_1,
-                    axis=0,
+                    y
                 )
             elif interpolator == "cubic":
                 interpolating_function = interpolate.CubicSpline(
