@@ -4,9 +4,10 @@ import pybamm
 import pybamm as pb
 import numpy as np
 from FoKL import FoKLRoutines
-import jax.numpy as jnp
+
 from embedded_gp import Experimental_Embedded_GPs
-from FoKL import JAX_Eval
+
+from FoKL.JAX_Eval import *
 import pandas as pd
 import matplotlib.pyplot as plt
 
@@ -18,14 +19,12 @@ warnings.filterwarnings("ignore")
 
 pb.set_logging_level("NOTICE")
 batmodel = pybamm.lithium_ion.SPM()
+param = pb.ParameterValues("Mohtat2020")
  # remove events (not supported in jax)
 batgeometry = batmodel.default_geometry
 
-# Set Parameter values
-param1 = pb.ParameterValues("Mohtat2020")
-
 # Define the phis (basis functions) used
-phis = jnp.array(FoKLRoutines.getKernels.sp500())
+phis = np.array(FoKLRoutines.getKernels.sp500())
 
 
 def normalize_inputs(inputs, min, max):
@@ -50,9 +49,9 @@ VD = D[2, :]
 I = np.concatenate((IC, ID))
 t = np.concatenate((TC, TD))
 V = np.concatenate((VC, VD))
-IJ = jnp.array(I)
+IJ = np.array(I)
 # Define inputs and normalize
-inputs = jnp.array([I])
+inputs = np.array([I])
 inputs_norm = normalize_inputs(inputs, np.min(I), np.max(I))
 
 # Create object for each individual GP
@@ -68,67 +67,74 @@ model.phis = phis
 model.data = np.transpose(V)
 
 
-def j0(self, c_e, c_s_surf, T, lithiation=None):
-    """Dimensional exchange-current density [A.m-2]"""
-    tol = pybamm.settings.tolerances["j0__c_e"]
-    c_e = pybamm.maximum(c_e, tol)
-    tol = pybamm.settings.tolerances["j0__c_s"]
-    c_s_surf = pybamm.maximum(
-        pybamm.minimum(c_s_surf, (1 - tol) * self.c_max), tol * self.c_max
-    )
-    domain, Domain = self.domain_Domain
-    if lithiation is None:
-        lithiation = ""
-    else:
-        lithiation = lithiation + " "
-    inputs = {
-        "Current [A]": pybamm.electrical_parameters.current_with_time,
-    }
-    return pybamm.FunctionParameter(
-        f"{self.phase_prefactor}{Domain} electrode {lithiation}"
-        "exchange-current density [A.m-2]",
-        inputs,
-    )
-
 #pmap gradient, FD gradient estimator
 
-pybamm.parameters.lithium_ion_parameters.j0 = j0
 
 minI = -4.0304
 maxI = 1.5145
 
 
 
-current_interpolant = pybamm.Interpolant(t.reshape(1,-1), I, pybamm.t)
+current_interpolant = pybamm.Interpolant(t, I, pybamm.t)
+param["Current function [A]"] = current_interpolant
+
+# T1 = timeit.default_timer()
+solver = pybamm.CasadiSolver(mode="fast")
+sim = pybamm.Simulation(batmodel, parameter_values=param, solver=solver)
+
+solution = sim.solve(t)
 
 
 
-def equation(GP_results):
+#
+# def j0(self, c_e, c_s_surf, T, lithiation=None):
+#     """Dimensional exchange-current density [A.m-2]"""
+#     tol = pybamm.settings.tolerances["j0__c_e"]
+#     c_e = pybamm.maximum(c_e, tol)
+#     tol = pybamm.settings.tolerances["j0__c_s"]
+#     c_s_surf = pybamm.maximum(
+#         pybamm.minimum(c_s_surf, (1 - tol) * self.c_max), tol * self.c_max
+#     )
+#     domain, Domain = self.domain_Domain
+#     if lithiation is None:
+#         lithiation = ""
+#     else:
+#         lithiation = lithiation + " "
+#     inputs = {
+#         "Current [A]": pybamm.electrical_parameters.current_with_time,
+#     }
+#     return pybamm.FunctionParameter(
+#         f"{self.phase_prefactor}{Domain} electrode {lithiation}"
+#         "exchange-current density [A.m-2]",
+#         inputs,
+#     )
+# pybamm.parameters.lithium_ion_parameters.j0 = j0
+
+def equation(betas, mtx):
 
     param1 = pb.ParameterValues("Mohtat2020")
 
 
-    def j0p(I):
+    def j0p(I_pb):
 
-        n = 986
-        x1 = np.linspace(0, 1, n)
+        x1 = I
 
         predictions = np.array(GP_results[0])
 
         # Create interpolant with separate 1D arrays for each dimension and the associated children
 
-        interp = pybamm.Interpolant(x1.reshape(1,-1), predictions, (I-minI/(maxI-minI)), interpolator="linear")
+        interp = pybamm.Interpolant(x1, predictions, (I_pb-minI/(maxI-minI)), interpolator="linear")
         return interp
-    def j0n(I):
+    def j0n(I_pb):
 
         n = 986
-        x1 = np.linspace(0, 1, n)
+        x1 = I
 
         predictions = np.array(GP_results[1])
 
         # Create interpolant with separate 1D arrays for each dimension and the associated children
 
-        interp = pybamm.Interpolant(x1.reshape(1,-1), predictions, (I-minI/(maxI-minI)), interpolator="linear")
+        interp = pybamm.Interpolant(x1, predictions, (I_pb-minI/(maxI-minI)), interpolator="linear")
         return interp
 
     param1["Positive electrode exchange-current density [A.m-2]"] = j0p
@@ -136,7 +142,7 @@ def equation(GP_results):
     param1["Current function [A]"] = current_interpolant
 
     # T1 = timeit.default_timer()
-    solver = pybamm.CasadiSolver()
+    solver = pybamm.CasadiSolver(mode="fast")
     sim = pybamm.Simulation(batmodel, parameter_values=param1, solver=solver)
 
     solution = sim.solve(t)
