@@ -141,7 +141,7 @@ class CasadiConverter:
             elif symbol.function == special.erf:
                 return casadi.erf(*converted_children)
             elif isinstance(symbol, pybamm.Interpolant):
-                if symbol.interpolator == "linear":
+                if symbol.interpolator == "linear" or "JAX":
                     solver = "linear"
                 elif symbol.interpolator == "cubic":
                     solver = "bspline"

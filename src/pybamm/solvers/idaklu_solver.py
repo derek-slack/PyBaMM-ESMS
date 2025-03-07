@@ -232,8 +232,8 @@ class IDAKLUSolver(pybamm.BaseSolver):
 
         self.output_variables = [] if output_variables is None else output_variables
 
-        if idaklu_spec is None:  # pragma: no cover
-            raise ImportError("KLU is not installed")
+        # if idaklu_spec is None:  # pragma: no cover
+        #     raise ImportError("KLU is not installed")
 
         super().__init__(
             "ida",

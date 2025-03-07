@@ -377,7 +377,7 @@ class Solution:
         # We only care about the cases where y is growing too large without any
         # restraint, so if y gets large in the middle then comes back down that is ok
         y, model = self.all_ys[-1], self.all_models[-1]
-        y = y[:, -1]
+        # y = y[:, -1]
         if np.any(y > pybamm.settings.max_y_value):
             for var in [*model.rhs.keys(), *model.algebraic.keys()]:
                 var = model.variables[var.name]
@@ -645,7 +645,10 @@ class Solution:
 
     def process_casadi_var(self, var_pybamm, inputs, ys_shape):
         t_MX = casadi.MX.sym("t")
-        y_MX = casadi.MX.sym("y", ys_shape[0])
+        if len(ys_shape) > 0:
+            y_MX = casadi.MX.sym("y", ys_shape[0])
+        else:
+            y_MX = casadi.MX.sym("y")
         inputs_MX_dict = {
             key: casadi.MX.sym("input", value.shape[0]) for key, value in inputs.items()
         }

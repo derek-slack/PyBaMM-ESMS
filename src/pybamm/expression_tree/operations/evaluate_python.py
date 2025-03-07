@@ -696,8 +696,8 @@ class EvaluatorJax:
         evaluate function
         """
         # generated code assumes y is a column vector
-        if y is not None and y.ndim == 1:
-            y = y.reshape(-1, 1)
+        # if y is not None and y.ndim == 1:
+        y = y.reshape(-1, 1)
 
         result = self._jit_evaluate(*self._constants, t, y, inputs)
 

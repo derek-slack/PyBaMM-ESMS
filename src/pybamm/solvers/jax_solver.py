@@ -222,41 +222,44 @@ class JaxSolver(pybamm.BaseSolver):
             self._cached_solves[model] = self.create_solve(model, t_eval)
 
         y = []
-        platform = jax.lib.xla_bridge.get_backend().platform.casefold()
-        if len(inputs) <= 1 or platform.startswith("cpu"):
-            # cpu execution runs faster when multithreaded
-            async def solve_model_for_inputs():
-                async def solve_model_async(inputs_v):
-                    return self._cached_solves[model](inputs_v)
-
-                coro = []
-                for inputs_v in inputs:
-                    coro.append(asyncio.create_task(solve_model_async(inputs_v)))
-                return await asyncio.gather(*coro)
-
-            y = asyncio.run(solve_model_for_inputs())
-        elif (
-            platform.startswith("gpu")
-            or platform.startswith("tpu")
-            or platform.startswith("metal")
-        ):
-            # gpu execution runs faster when parallelised with vmap
-            # (see also comment below regarding single-program multiple-data
-            #  execution (SPMD) using pmap on multiple XLAs)
-
-            # convert inputs (array of dict) to a dict of arrays for vmap
-            inputs_v = {
-                key: jnp.array([dic[key] for dic in inputs]) for key in inputs[0]
-            }
-            y.extend(jax.vmap(self._cached_solves[model])(inputs_v))
-        else:
-            # Unknown platform, use serial execution as fallback
-            print(
-                f'Unknown platform requested: "{platform}", '
-                "falling back to serial execution"
-            )
-            for inputs_v in inputs:
-                y.append(self._cached_solves[model](inputs_v))
+        y = []
+        for inputs_v in inputs:
+            y.append(self._cached_solves[model](inputs_v))
+        # platform = jax.lib.xla_bridge.get_backend().platform.casefold()
+        # if len(inputs) <= 1 or platform.startswith("cpu"):
+        #     # cpu execution runs faster when multithreaded
+        #     async def solve_model_for_inputs():
+        #         async def solve_model_async(inputs_v):
+        #             return self._cached_solves[model](inputs_v)
+        #
+        #         coro = []
+        #         for inputs_v in inputs:
+        #             coro.append(asyncio.create_task(solve_model_async(inputs_v)))
+        #         return await asyncio.gather(*coro)
+        #
+        #     y = asyncio.run(solve_model_for_inputs())
+        # elif (
+        #     platform.startswith("gpu")
+        #     or platform.startswith("tpu")
+        #     or platform.startswith("metal")
+        # ):
+        #     # gpu execution runs faster when parallelised with vmap
+        #     # (see also comment below regarding single-program multiple-data
+        #     #  execution (SPMD) using pmap on multiple XLAs)
+        #
+        #     # convert inputs (array of dict) to a dict of arrays for vmap
+        #     inputs_v = {
+        #         key: jnp.array([dic[key] for dic in inputs]) for key in inputs[0]
+        #     }
+        #     y.extend(jax.vmap(self._cached_solves[model])(inputs_v))
+        # else:
+        #     # Unknown platform, use serial execution as fallback
+        #     print(
+        #         f'Unknown platform requested: "{platform}", '
+        #         "falling back to serial execution"
+        #     )
+        #     for inputs_v in inputs:
+        #         y.append(self._cached_solves[model](inputs_v))
 
         # This code block implements single-program multiple-data execution
         # using pmap across multiple XLAs. It is currently commented out
@@ -290,7 +293,8 @@ class JaxSolver(pybamm.BaseSolver):
         integration_time = timer.time()
 
         # convert to a normal numpy array
-        y = onp.array(y)
+        y = jax.block_until_ready(y[0])
+        y = onp.array(y[0])
 
         termination = "final time"
         t_event = None

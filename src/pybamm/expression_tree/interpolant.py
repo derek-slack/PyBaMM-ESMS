@@ -2,8 +2,10 @@
 # Interpolating class
 #
 from __future__ import annotations
+
+import jax.scipy.interpolate
 import numpy as np
-from jax.scipy import interpolate
+from scipy import interpolate
 from collections.abc import Sequence
 import numbers
 
@@ -53,7 +55,7 @@ class Interpolant(pybamm.Function):
         _num_derivatives: int = 0,
     ):
         # Check interpolator is valid
-        if interpolator not in ["linear", "cubic", "pchip"]:
+        if interpolator not in ["linear", "cubic", "pchip", "JAX"]:
             raise ValueError(f"interpolator '{interpolator}' not recognised")
 
         # Perform some checks on the data
@@ -76,7 +78,7 @@ class Interpolant(pybamm.Function):
             if y.ndim != 3:
                 raise ValueError("y should be three-dimensional if len(x)=3")
 
-            if x1[0].shape[0] != y.shape[0]:
+            if x1.shape[0] != y.shape[0]:
                 raise ValueError(
                     "len(x1) should equal y=shape[0], "
                     f"but x1.shape={x1.shape} and y.shape={y.shape}"
@@ -98,7 +100,7 @@ class Interpolant(pybamm.Function):
                 x1 = x
                 x: list[np.ndarray] = [x]  # type: ignore[no-redef]
             x2 = None
-            if x1.shape[1] != y.shape[0]:
+            if x1.shape[0] != y.shape[0]:
                 raise ValueError(
                     "len(x1) should equal y=shape[0], "
                     f"but x1.shape={x1.shape} and y.shape={y.shape}"
@@ -125,9 +127,12 @@ class Interpolant(pybamm.Function):
                     fill_value_1: float | str = np.nan
                 elif extrapolate is True:
                     fill_value_1 = "extrapolate"
-                interpolating_function = interpolate.RegularGridInterpolator(
+                interpolating_function = interpolate.interp1d(
                     x1,
-                    y
+                    y,
+                    bounds_error=False,
+                    fill_value=fill_value_1,
+                    axis=0,
                 )
             elif interpolator == "cubic":
                 interpolating_function = interpolate.CubicSpline(
@@ -137,6 +142,12 @@ class Interpolant(pybamm.Function):
                 interpolating_function = interpolate.PchipInterpolator(
                     x1, y, extrapolate=extrapolate
                 )
+            elif interpolator == "JAX":
+                interpolating_function = jax.scipy.interpolate.RegularGridInterpolator(
+                    (x1,), y
+                )
+
+
         elif len(x) == 2:
             self.dimension = 2
             if interpolator == "pchip":
@@ -187,6 +198,10 @@ class Interpolant(pybamm.Function):
         self.x = x
         self.y = y
         self.entries_string = entries_string
+
+        # Wrap the interpolating function in a finite difference derivative object
+        if not hasattr(interpolating_function, 'derivative'):
+            interpolating_function = FiniteDifferenceDerivative(interpolating_function)
 
         # Differentiate the interpolating function if necessary
         self._num_derivatives = _num_derivatives
@@ -353,3 +368,84 @@ class Interpolant(pybamm.Function):
         }
 
         return json_dict
+
+class FiniteDifferenceDerivative:
+    """
+    A class to compute derivatives using finite differences.
+    """
+
+    def __init__(self, func, dx=1e-6):
+        """
+        Parameters
+        ----------
+        func : callable
+            The function to differentiate.
+        dx : float, optional
+            The step size for finite differences. Default is 1e-6.
+        """
+        self.func = func
+        self.dx = dx
+
+    def __call__(self, x):
+        """
+        Evaluate the function at the given point(s).
+
+        Parameters
+        ----------
+        x : float or array-like
+            The point(s) at which to evaluate the function.
+
+        Returns
+        -------
+        float or array-like
+            The value of the function at the given point(s).
+        """
+        return self.func(x).reshape(-1,1)
+
+    def derivative(self, n=1):
+        """
+        Compute the nth derivative of the function.
+
+        Parameters
+        ----------
+        n : int, optional
+            The order of the derivative. Default is 1 (first derivative).
+
+        Returns
+        -------
+        callable
+            A function that computes the nth derivative.
+        """
+        if n == 0:
+            return self.func
+        else:
+            return lambda x: finite_difference_derivative(self.func, x, dx=self.dx, n=n)
+import numpy as np
+from scipy.misc import derivative
+
+def finite_difference_derivative(func, x, dx=1e-6, n=1):
+    """
+    Compute the nth derivative of a function using finite differences.
+
+    Parameters
+    ----------
+    func : callable
+        The function to differentiate.
+    x : float or array-like
+        The point(s) at which to compute the derivative.
+    dx : float, optional
+        The step size for finite differences. Default is 1e-6.
+    n : int, optional
+        The order of the derivative. Default is 1 (first derivative).
+
+    Returns
+    -------
+    float or array-like
+        The derivative of the function at the given point(s).
+    """
+    if n == 0:
+        return func(x)
+    else:
+
+        return jax.grad(func, x)
+
