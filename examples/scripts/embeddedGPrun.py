@@ -21,8 +21,8 @@ warnings.filterwarnings("ignore")
 k = "symmetric Butler-Volmer"
 pb.set_logging_level("NOTICE")
 batmodel = pybamm.lithium_ion.SPMe({"intercalation kinetics": k})
-batmodel.events = []
-batmodel.convert_to_format = 'jax'
+# batmodel.events = []
+# batmodel.convert_to_format = 'jax'
 
 save_folder = "figures"
 os.makedirs(save_folder, exist_ok=True)
@@ -68,7 +68,7 @@ for i in range(336):
         TD_M.append(TD[i])
 
 I = np.array(ID_M)
-t = np.array(TD_M)
+t = np.array(TD_M) - 30
 V = np.array(VD_M)
 IJ = jnp.array(I)
 # Define inputs and normalize
@@ -219,21 +219,22 @@ experiment = pybamm.Experiment(
 current_interpolant = pybamm.Interpolant(t, I, pybamm.t)#, interpolator="JAX")  # , _num_derivatives=0)
 param1["Current function [A]"] = 4
 param1["Positive electrode OCP [V]"] = polyfit_ocv
+param1["Electrode width [m]"] = 0.25
 # param1["Negative electrode porosity"] = 0.5
 # param1["Negative electrode OCP [V]"] = 0
 # param1["Open-circuit voltage at 0% SOC [V]"] = 0
 # param1["Open-circuit voltage at 100% SOC [V]"] = 4.31
-# param1["Initial concentration in positive electrode [mol.m-3]"] =  31513.0 * 0.77
-param1['Nominal cell capacity [A.h]'] = 2.1
-# param1["Lower voltage cut-off [V]"] = 1.8
-# param1["Upper voltage cut-off [V]"] = 4.4
-param1["Contact resistance [Ohm]"] = 0.156
-# param1["Open-circuit voltage at 0% SOC [V]"] = 0.4
-# param1["Open-circuit voltage at 100% SOC [V]"] = 4.2
+param1["Initial concentration in positive electrode [mol.m-3]"] = 31513.0 * 0.64
+# param1['Nominal cell capacity [A.h]'] = 2.1
+param1["Lower voltage cut-off [V]"] = 1.5
+param1["Upper voltage cut-off [V]"] = 4.4
+# param1["Contact resistance [Ohm]"] = 0.156
+param1["Open-circuit voltage at 0% SOC [V]"] = 0.4
+param1["Open-circuit voltage at 100% SOC [V]"] = 4.2
 
 
-# solver = pybamm.CasadiSolver(dt_max=30,mode="fast", return_solution_if_failed_early=True)
-solver = pybamm.JaxSolver()
+solver = pybamm.CasadiSolver(dt_max=30,mode="fast with events", return_solution_if_failed_early=True)
+# solver = pybamm.JaxSolver()
 #
 # j0p_global = None
 # j0n_global = None
@@ -276,15 +277,15 @@ solver = pybamm.JaxSolver()
 #
 # param1["Positive electrode exchange-current density [A.m-2]"] = 1
 # param1["Negative electrode exchange-current density [A.m-2]"] = 2
-# param1["Positive particle diffusivity [m2.s-1]"] = 2e-4
-# param1["Negative particle diffusivity [m2.s-1]"] = 2e-4
+# param1["Positive particle diffusivity [m2.s-1]"] = 12e-4
+# param1["Negative particle diffusivity [m2.s-1]"] = 2e-5
 # param1["Current function [A]"] = current_interpolant
 
 #
 # # param1["Initial concentration in positive electrode [mol.m-3]"] = 47513.0 * 0.58
 sim = pybamm.Simulation(batmodel,parameter_values=param1, solver=solver)
 
-solution = sim.solve(t, initial_soc=1)
+solution = sim.solve(t, initial_soc=0.97)
 Vpbi = solution['Voltage [V]'].entries
 plt.plot(Vpbi)
 plt.plot(V)
@@ -329,7 +330,7 @@ def equation(betas_list, mtx):
 
     sim = pybamm.Simulation(batmodel, parameter_values=param1, solver=solver)
 
-    solution = sim.solve(t, initial_soc=1)
+    solution = sim.solve(t, initial_soc=0.97)
 
     Vpb = solution["Voltage [V]"].entries
     n = len(Vpb)
@@ -356,7 +357,7 @@ def equation(betas_list, mtx):
 model.set_equation(equation)
 # beta0 = np.array(
 #     [-5.59750181, -1.70157791, -4.52797968, 2.05051943, -4.81077465, -1.82435794, -7.61931092, 2.71472927, 0.3])
-beta0 = np.array([j0p_i,-1,j0n_i,1,np.log(Dp_i),-1,np.log(Dn_i),1,3])
+beta0 = np.array([j0p_i,1,j0n_i,-1,np.log(Dp_i),-1,np.log(Dn_i),1,1e-2])
 samples, matrix, BIC = model.full_routine(draws=1000, init_betas=beta0, tolerance=0)
 
 pos_j0_model = model.evaluate(np.linspace(0, 1, 986).reshape(-1, 1), GP_number=0, draws=1000, burn=500, ReturnBounds=0)

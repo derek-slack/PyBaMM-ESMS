@@ -1,6 +1,7 @@
 # Import Relevant Libraries
 # Base FoKL to get Kernels for basis functions
 import timeit
+import warnings
 
 from FoKL import getKernels
 import itertools
@@ -440,39 +441,54 @@ class Embedded_GP_Model:
         U = self.neg_log_likelihood
         grad_U = self.d_neg_log_likelihood
 
-        # Random Momentum Sampling
 
-        mean = np.zeros(len(M))
-        p = random.multivariate_normal(mean, self.M)
-        current_p = p
+        def leapfrog_integrator(current_q, p):
+            ### Begin Leapfrog Integration
+            # Make half step for momentum at the beginning
+            U(current_q)
+            p = p - epsilon * grad_U(current_q) / 2
 
-        ### Begin Leapfrog Integration
-        # Make half step for momentum at the beginning
-        U(current_q)
-        p = p - epsilon * grad_U(current_q) / 2
+            # def loop_body(i, val):
+            #     q, p = val
+            #     q = q + epsilon * (Cov_Matrix @ p.reshape(-1, 1)).flatten()
+            #     p_update = epsilon * grad_U(q)
+            #     last_iter_factor = 1 - (i == L - 1)
+            #     p = p - last_iter_factor * p_update
+            #     return (q, p)
+            #
+            # q, p = fori_loop(0, L, loop_body, (current_q, p))
+            q = current_q
+            for i in range(L):
+                q = q + epsilon * (Cov_Matrix @ p.reshape(-1, 1)).flatten()
+                U(q)
+                p_update = epsilon * grad_U(q)
+                last_iter_factor = 1 - (i == L - 1)
+                p = p - last_iter_factor * p_update
 
-        # def loop_body(i, val):
-        #     q, p = val
-        #     q = q + epsilon * (Cov_Matrix @ p.reshape(-1, 1)).flatten()
-        #     p_update = epsilon * grad_U(q)
-        #     last_iter_factor = 1 - (i == L - 1)
-        #     p = p - last_iter_factor * p_update
-        #     return (q, p)
-        #
-        # q, p = fori_loop(0, L, loop_body, (current_q, p))
-        q = current_q
-        for i in range(L):
-            q = q + epsilon * (Cov_Matrix @ p.reshape(-1, 1)).flatten()
+
+            # Make half step for momentum at the end
             U(q)
-            p_update = epsilon * grad_U(q)
-            last_iter_factor = 1 - (i == L - 1)
-            p = p - last_iter_factor * p_update
-
-
-        # Make half step for momentum at the end
-        U(q)
-        p = p - epsilon * grad_U(q) / 2
+            p = p - epsilon * grad_U(q) / 2
+            return p
         ### End Leapfrog Integration
+            # Random Momentum Sampling
+        q = current_q
+        tol = 1
+        while tol < 5:
+            mean = np.zeros(len(M))
+            p = random.multivariate_normal(mean, self.M)
+            current_p = p
+            try:
+                p = leapfrog_integrator(current_q, p)
+            except:
+                print(f"leapfrog failed at \n q = {current_q}\n p = {current_p}")
+                if tol > 4:
+                    raise ValueError("LeapFrog integration failed")
+                tol += 1
+            else:
+                break
+
+
 
         # Metropolis Hastings Criteria Evaluation
         # Negate momentum for detail balance
