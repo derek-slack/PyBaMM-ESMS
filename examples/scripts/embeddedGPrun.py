@@ -360,58 +360,49 @@ model.set_equation(equation)
 beta0 = np.array([j0p_i,1,j0n_i,-1,np.log(Dp_i),-1,np.log(Dn_i),1,1e-2])
 samples, matrix, BIC = model.full_routine(draws=1000, init_betas=beta0, tolerance=0)
 
-pos_j0_model = model.evaluate(np.linspace(0, 1, 986).reshape(-1, 1), GP_number=0, draws=1000, burn=500, ReturnBounds=0)
-neg_j0_model = model.evaluate(np.linspace(0, 1, 986).reshape(-1, 1), GP_number=1, draws=1000, burn=500, ReturnBounds=0)
+np.savetxt('samples.csv', samples)
+np.savetxt('matrix.csv', matrix)
+
+bj0p = samples[0:1, -1]
+bj0n = samples[2:3, -1]
+bU1 = samples[4:5, -1]
+bU2 = samples[6:7, -1]
+
+betas_list_final = [bj0p, bj0n, bU1, bU2]
+mtx = np.array([[1]])
 
 
-def pos_j0(I):
-    n = 986
-    x1 = np.linspace(0, 1, n)
-
-    predictions = pos_j0_model
-
-    # Create interpolant with separate 1D arrays for each dimension and the associated children
-
-    interp = pybamm.Interpolant(x1, predictions, (I + 4.0304) / (1.5145 + 4.0304), interpolator="linear")
-    return interp
+def j0p_final(c_e, c_s_surf, c_s_max, T):
+    # This evaluation cannot currently be used in JAX until PyBamm Interpolation can be used in JAX Solver
+    res = evaluate_pybamm(betas_list_final[0], mtx, [c_s_surf / c_s_max], phis)
+    return res
 
 
-def neg_j0(I):
-    n = 986
-    x1 = np.linspace(0, 1, n)
-
-    predictions = neg_j0_model
-
-    # Create interpolant with separate 1D arrays for each dimension and the associated children
-
-    interp = pybamm.Interpolant(x1, predictions, (I + 4.0304) / (1.5145 + 4.0304), interpolator="linear")
-    return interp
+def j0n_final(c_e, c_s_surf, c_s_max, T):
+    res = np.exp(evaluate_pybamm(betas_list_final[1], mtx, [c_s_surf / c_s_max], phis))
+    return res
 
 
-batmodel = pb.lithium_ion.SPM()
+def U1_final(sto, T):
+    # This evaluation cannot currently be used in JAX until PyBamm Interpolation can be used in JAX Solver
+    betas = betas_list_final[2]
+    res = np.exp(evaluate_pybamm(betas, mtx, [sto], phis))
+    return res
 
-C = pd.read_csv('chargecycle.csv', header=None)
-D = pd.read_csv('dischargecycle.csv', header=None)
 
-C = C.to_numpy()
-D = D.to_numpy()
+def U2_final(sto, T):
+    betas = betas_list_final[3]
+    res = np.exp(evaluate_pybamm(betas, mtx, [sto], phis))
+    return res
 
-TC = C[0, :]
-TD = D[0, :] + C[0, -1:] + 0.00001
 
-IC = C[1, :]
-ID = D[1, :]
-
-I = np.concatenate((IC, ID))
-t = np.concatenate((TC, TD))
-
-current_interpolant = pybamm.Interpolant(t, I, pybamm.t)
-
-param1["Positive electrode exchange-current density [A.m-2]"] = pos_j0
-param1["Negative electrode exchange-current density [A.m-2]"] = neg_j0
+param1["Positive electrode exchange-current density [A.m-2]"] = j0p_final
+param1["Negative electrode exchange-current density [A.m-2]"] = j0n_final
+param1["Positive particle diffusivity [m2.s-1]"] = U1_final
+param1["Negative particle diffusivity [m2.s-1]"] = U2_final
 param1["Current function [A]"] = current_interpolant
 
-solver = pybamm.CasadiSolver(mode="fast")
+solver = pybamm.CasadiSolver(mode="fast with events")
 sim = pybamm.Simulation(batmodel, parameter_values=param1, solver=solver)
 
 solution = sim.solve(jnp.array(t))
