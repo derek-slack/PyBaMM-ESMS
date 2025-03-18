@@ -25,7 +25,10 @@ def evaluate_pybamm(betas, mtx, inputs, phis, coeff = None):
     n = jnp.shape(inputs)[0]  # Size of normalized inputs
     mputs = 1
     X_sol = []
-    init = 0
+    if coeff is None:
+        init = 1
+    else:
+        init = 0
 
     mtx = jnp.array(mtx)
     phind = []
@@ -58,12 +61,12 @@ def evaluate_pybamm(betas, mtx, inputs, phis, coeff = None):
             nid = int(num - 1)
 
             # coeff = []
-            if coeff is None:
+            if init == 1:
                 coeff = []
-                init = 1
+
                 for jj in range(4):
                     phispace = phis[nid][jj].reshape(1,-1)
-                    phi_interp = pybamm.Interpolant(lspace[0], phispace[0], phind[k], interpolator="JAX")#,_num_derivatives=0)
+                    phi_interp = pybamm.Interpolant(lspace[0], phispace[0], phind[k])#, interpolator="JAX")#,_num_derivatives=0)
                     coeff.append(phi_interp)
 
             # multiplies phi(x0)*phi(x1)*etc.
@@ -72,11 +75,11 @@ def evaluate_pybamm(betas, mtx, inputs, phis, coeff = None):
 
     X_sol_ones = betas[0]
     mean = X_sol_ones
-    # for i in range(len(X_sol)):
-    #     X_sol_betas = X_sol[i]*betas[i+1]
-    #     mean += X_sol_betas
+    for i in range(len(X_sol)):
+        X_sol_betas = X_sol[i]*betas[i+1]
+        mean += X_sol_betas
     # if init == 1:
-    #     return mean, coeff
+    #     return mean
     # else:
     return mean
 
